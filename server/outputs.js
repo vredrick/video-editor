@@ -79,7 +79,7 @@ function collect() {
     if (secs < 60) continue;
     // already in the list: a render of the same folder that ended within 15 min (the queue's own, or a version a chat registered)
     const at = Date.parse(g.at) || 0, seg = String(g.project || '').split(/[\\/]/).pop().toLowerCase();
-    if (seg && out.some((x) => x.file && x.file.toLowerCase().includes('\\' + seg + '\\') && Math.abs((Date.parse(x.finishedAt) || 0) - at) < 15 * 60e3)) continue;
+    if (seg && out.some((x) => x.file && x.file.toLowerCase().replace(/\//g, '\\').includes('\\' + seg + '\\') && Math.abs((Date.parse(x.finishedAt) || 0) - at) < 15 * 60e3)) continue;
     out.push({ key: 'guard:' + g.at + g.project, source: 'RenderGuard', state: /^FINISHED/i.test(g.event) ? 'done' : 'failed', file: null, projectName: g.project, finishedAt: iso(g.at),
       session: g.session || null, manual: !g.session, mode: null, error: /^FINISHED/i.test(g.event) ? null : g.event, detail: g.detail });
   }

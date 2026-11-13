@@ -1,15 +1,15 @@
 // Finds what can go, explains why, and removes it reversibly:
-// deletions go to the Recycle Bin, old versions are moved to the archive folder. Nothing is hard-deleted.
+// deletions go to the Recycle Bin (on Linux: the workspace's trash folder), old versions are moved to the archive folder. Nothing is hard-deleted.
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { config } from './config.js';
+import { config, baseDir } from './config.js';
 import { index } from './scan.js';
 import * as jobs from './jobs.js';
 import { guardState } from './guard.js';
-import { DATA_DIR, TEMP, powershell, fingerprint, processAlive, shortPath, writeJson, now, isInside } from './util.js';
+import { DATA_DIR, TEMP, IS_WIN, powershell, fingerprint, processAlive, shortPath, writeJson, now, isInside } from './util.js';
 
 const DONE = new Set(['approved', 'published', 'archived', 'done']);
 // Presets for "Clean render leftovers in all projects" (each candidate carries one):
@@ -64,7 +64,7 @@ const cid = s => crypto.createHash('sha1').update(s.toLowerCase()).digest('hex')
 function busyWhy(p) {
   if (jobs.list().some(j => j.project === p.id && (j.state === 'running' || j.state === 'queued'))) return 'a render is in the VideoHub queue';
   try { const g = guardState(); if (g.running && (g.renders || []).some(r => [r.project, r.dir, r.cwd, r.path].some(x => typeof x === 'string' && x && (isInside(x, p.path) || isInside(p.path, x))))) return 'currently rendering'; } catch { }
-  for (const f of ['render\\log.txt', 'render.log', 'render_log.txt']) { try { if (Date.now() - fs.statSync(path.join(p.path, f)).mtimeMs < 10 * 60e3) return 'render log updated in the last 10 minutes'; } catch { } }
+  for (const f of [path.join('render', 'log.txt'), 'render.log', 'render_log.txt']) { try { if (Date.now() - fs.statSync(path.join(p.path, f)).mtimeMs < 10 * 60e3) return 'render log updated in the last 10 minutes'; } catch { } }
   try { if (fs.readdirSync(path.join(p.outDir || p.path, 'render', 'chunks')).some(f => f.endsWith('.tmp.mp4') && Date.now() - fs.statSync(path.join(p.outDir || p.path, 'render', 'chunks', f)).mtimeMs < 10 * 60e3)) return 'unfinished render chunk found (a render may still be running)'; } catch { }
   return null;
 }
@@ -190,7 +190,7 @@ async function computeCandidates() {
     }
     // 5. chunks / parts of a finished film (needed only for partial re-renders while still being reviewed)
     if (DONE.has(p.status) && !p.statusAuto && !(p.notesOpen > 0) && newestFinal) {
-      for (const d of ['render\\chunks', 'render\\preview']) {
+      for (const d of [path.join('render', 'chunks'), path.join('render', 'preview')]) {
         const full = path.join(p.outDir || p.path, d); if (!exists(full)) continue;
         const s = await dirSize(full); if (s.size < 20 << 20) continue;
         add({ rule: 'chunks', preset: 'deep', project: p.id, projectName: p.name, path: full, size: s.size, dir: true, action: 'recycle', checked: !p.statusAuto,
@@ -270,6 +270,7 @@ function why(code) {
   if (code === -1) return 'Operation interrupted.';
   if (code === -2) return 'Too large for the Recycle Bin; left untouched to avoid permanent deletion.';
   if (code === -3) return 'The Recycle Bin is disabled or unavailable on this drive; left untouched to avoid permanent deletion.';
+  if (code === -4) return 'On another disk than the trash folder (a move there would be a copy); left untouched.';
   if ([2, 3, 0x7C, 0x402].includes(code)) return 'Not found.';
   if ([5, 0x78, 0x10074].includes(code)) return 'Access denied.';
   if ([32, 33].includes(code)) return 'In use by another program (open file).';
@@ -281,6 +282,7 @@ function why(code) {
 // to hang the run), one PowerShell for the whole list, one result line per item as it goes. Items bigger than the
 // Bin of their drive are refused: Windows would delete those permanently without asking.
 function recycleStream(items, onItem) {
+  if (!IS_WIN) return trashStream(items, onItem);
   return new Promise(resolve => {
     if (!items.length) return resolve();
     const listFile = path.join(DATA_DIR, `recycle-${Date.now()}.json`);
@@ -336,10 +338,23 @@ foreach ($i in @($items)) {
   });
 }
 
+// Linux (RunPod pod) has no Recycle Bin: items are moved (renamed, never copied and deleted) into <workspace>/trash/<time>/,
+// keeping their full path below it, so they can be put back by hand. Another disk than the trash folder: left untouched.
+export const trashDir = () => path.join(baseDir(), 'trash');
+export async function trashStream(items, onItem, root = trashDir()) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  for (const i of items) {
+    let dest = path.join(root, stamp, path.resolve(i.path).replace(/^[\\/]+/, ''));
+    for (let k = 2; fs.existsSync(dest); k++) dest = path.join(root, stamp, path.resolve(i.path).replace(/^[\\/]+/, '') + `_${k}`);
+    try { await fsp.mkdir(path.dirname(dest), { recursive: true }); await fsp.rename(i.path, dest); onItem(i, 0); }
+    catch (e) { onItem(i, e.code === 'EXDEV' ? -4 : e.code === 'ENOENT' ? 2 : e.code === 'EACCES' || e.code === 'EPERM' ? 5 : e.code === 'EBUSY' ? 32 : -1); }
+  }
+}
+
 // old versions: copy (async, so the hub keeps answering), check, then remove the original
 async function archiveOne(i) {
   const root = config().archiveDir;
-  const rel = shortPath(i.path).replace(/^~\\/, '').replace(/^[A-Za-z]:\\/, '');
+  const rel = shortPath(i.path).replace(/^~[\\/]/, '').replace(/^\//, '').replace(/^[A-Za-z]:\\/, '');
   let dest = path.join(root, rel);
   for (let k = 2; fs.existsSync(dest); k++) dest = path.join(root, rel.replace(/(\.[^.\\]+)?$/, m => `_${k}${m}`));   // keep the older archived copy
   await fsp.mkdir(path.dirname(dest), { recursive: true });

@@ -22,6 +22,7 @@ import * as outputsApi from './outputs.js';
 import * as ciktilar from './ciktilar.js';
 import * as layersApi from './layers.js';
 import * as scenesApi from './scenes.js';
+import * as reviewApi from './review.js';
 import * as edit2d from './edit2d.js';
 import * as soundEdit from './soundedit.js';
 import * as tweaksApi from './tweaks.js';
@@ -134,7 +135,7 @@ route('GET', '/api/find', async (req, url) => {
 route('GET', '/api/project/:id', async (req, url, { id }) => {
   const p = project(id); if (!p) throw Object.assign(new Error('Project not found'), { code: 404 });
   const name = p.name.toLowerCase();
-  const history = guardHistory(1000).filter(h => h.project && (h.project.toLowerCase().endsWith('\\' + name) || h.project.toLowerCase() === name)).slice(0, 60);
+  const history = guardHistory(1000).filter(h => h.project && (h.project.toLowerCase().replace(/\//g, '\\').endsWith('\\' + name) || h.project.toLowerCase() === name)).slice(0, 60);
   // the review page does not need the cleanup list (lite=1); the project page waits at most 1.5 s for it
   const cand = url.searchParams.get('lite') ? null : await Promise.race([findCandidates().catch(() => []), new Promise(r => setTimeout(() => r(null), 1500))]);
   return { ...p, label: shortPath(p.path), cleanup: (cand || []).filter(c => c.project === id), cleanupPending: !cand && !url.searchParams.get('lite'), busy: busyProjects().find(b => b.project === id)?.reason || null, notes: notesApi.list(p), versionsLog: notesApi.versions(p), history };
@@ -316,6 +317,7 @@ outputsApi.routes(route, readBody);
 ciktilar.routes(route);
 layersApi.routes(route);
 scenesApi.routes(route, readBody);
+reviewApi.routes(route, readBody);
 edit2d.routes(route, readBody);
 soundEdit.routes(route, readBody);
 jobs.routes(route, readBody);

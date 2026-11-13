@@ -1,6 +1,7 @@
 # VideoHub: notes for Claude working on this repo
 
-Local Windows hub for videos written as code (catalog, live preview with no render, review notes, protected render
+Local Windows hub (also headless on Linux / the RunPod workstation: [docs/LINUX.md](docs/LINUX.md),
+[runpod/README.md](runpod/README.md)) for videos written as code (catalog, live preview with no render, review notes, protected render
 queue, MCP tools). Node 22+, ES modules, no build step, vanilla-JS UI, optional C# agent. Architecture, map and the
 pitfalls behind past bugs: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). What a film project must look like:
 [docs/PROJECT-CONTRACT.md](docs/PROJECT-CONTRACT.md).
@@ -58,7 +59,8 @@ user; do not work around them. Uninstall: `uninstall.ps1` (`-DryRun` too).
 - `server/hub.js` HTTP + SSE; `scan.js` projects; `live.js` live preview; `notes.js` notes; `jobs.js` render queue;
   `tools.js` the `hub_*` tools (`mcp.js`, `cli.js`); `legacy.js` + `ui/values.js` stored values and legacy aliases;
   `config.js` settings and default folders (the workspace, `Documents\VideoHub\…` by default); `encoders.js` render
-  encoders; `scripts/init-config.mjs` setup's config helper.
+  encoders; `scripts/init-config.mjs` setup's config helper; `review.js` the claude.ai review page bridge
+  (`templates/review-page`, docs/REVIEW-PAGE.md).
 - `ui/app.js` pages, `ui/review*` review editor, `ui/thumbstudio*` Thumbnail Studio.
 - `guard/` render protection agent; `engine-hooks/` page-side editor hooks; `examples/hello-film` the example film;
   `templates/new-film` the starter for new films; `templates/thumbnail` built-in thumbnail templates.

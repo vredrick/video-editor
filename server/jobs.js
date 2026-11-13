@@ -9,10 +9,10 @@ import { linkOutput } from './ciktilar.js';
 import { pickFolder as pickFolderWin } from './pickfolder.js';
 import { config } from './config.js';
 import { project, rescanProject } from './scan.js';
-import { guardState, guardTrack } from './guard.js';
+import { guardState, guardTrack, killTree } from './guard.js';
 import { ramHogsNow, ramNote } from './ramhogs.js';
 import { vhDir, list as listNotes, update as updateNote } from './notes.js';
-import { DATA_DIR, HUB_DIR, readJson, writeJson, run, TOOLS, now, pLimit, refersToHub, isInside } from './util.js';
+import { DATA_DIR, HUB_DIR, IS_WIN, readJson, writeJson, run, TOOLS, now, pLimit, refersToHub, isInside } from './util.js';
 import { audioOf } from './live.js';
 import { ENCODERS, LABELS, encoderEnv } from './encoders.js';
 
@@ -215,8 +215,9 @@ async function runJob(job) {
   const rc = await recipe(p);
   assertActive(job);
   // VIDEOHUB_DIR: render scripts may load puppeteer-core from VideoHub's node_modules; VIDEOHUB_ENCODER: the encoder chosen in
-  // setup/Settings (render.encoder) unless the job sets its own (scripts that do not read it are not affected)
-  const env = { ...process.env, ...(job.workers ? { WK: String(job.workers) } : {}), ...encoderEnv(job.env, config().render?.encoder), ...job.env, VIDEOHUB_JOB: job.id, VIDEOHUB_DIR: HUB_DIR };
+  // setup/Settings (render.encoder) unless the job sets its own (scripts that do not read it are not affected); CHROME: on Linux
+  // the Chromium VideoHub found (there is no Edge), so render scripts use the same browser
+  const env = { ...(!IS_WIN && TOOLS.chrome ? { CHROME: TOOLS.chrome } : {}), ...process.env, ...(job.workers ? { WK: String(job.workers) } : {}), ...encoderEnv(job.env, config().render?.encoder), ...job.env, VIDEOHUB_JOB: job.id, VIDEOHUB_DIR: HUB_DIR };
   const versions = readJson(path.join(vhDir(p), 'versions.json'), []);
   const vN = Math.max(versions.reduce((m, v) => Math.max(m, v.v || 0), 0), maxNameVersion(p)) + 1;
 
@@ -403,7 +404,7 @@ export function cancel(id) {
   const j = get(id); if (!j) return false;
   if (!['queued', 'running'].includes(j.state)) return false;
   if (j.state === 'queued') { j.state = 'cancelled'; j.finishedAt = now(); emit('cancelled', j); return true; }
-  const children = procs.get(id); if (children) for (const c of children) if (c.pid) {
+  const children = procs.get(id); if (children) for (const c of children) if (!c.pid) continue; else if (!IS_WIN) killTree(c.pid); else {
     spawn('taskkill', ['/PID', String(c.pid), '/T', '/F'], { windowsHide: true }).on('error', () => { try { c.kill(); } catch { } });
   }
   j.state = 'cancelled'; j.finishedAt = now(); emit('cancelled', j); return true;

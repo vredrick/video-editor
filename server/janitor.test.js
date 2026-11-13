@@ -33,3 +33,27 @@ p.notesOpen=0;fs.unlinkSync(final);c=await findCandidates(true);assert(!c.some(x
 console.log('NO cleanup executed; all assertions inspect candidate lists only.');
 } finally { if(path.dirname(root)!==path.resolve(os.tmpdir()) || !path.basename(root).startsWith('videohub-cleanup-test-')) throw new Error('Unexpected test directory'); fs.rmSync(root,{recursive:true}); }
 });
+
+test('Linux trash: items are moved (never deleted) below trash/<time>/ with their full path, a missing one is reported', async () => {
+  const { trashStream } = await import('./janitor.js');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'videohub-trash-test-'));
+  try {
+    const f = path.join(root, 'films', 'a', 'old.mp4'); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, 'x');
+    const res = [];
+    await trashStream([{ path: f }, { path: path.join(root, 'nope.mp4') }], (i, code) => res.push(code), path.join(root, 'trash'));
+    assert.deepEqual(res, [0, 2]); assert.equal(fs.existsSync(f), false);
+    const [stamp] = fs.readdirSync(path.join(root, 'trash'));
+    assert.equal(fs.readFileSync(path.join(root, 'trash', stamp, f.replace(/^[\\/]+/, '')), 'utf8'), 'x');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('Linux render protection finds the whole process tree from /proc (names with spaces and brackets too)', async () => {
+  const { procTree } = await import('./guard.js');
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'videohub-proc-test-'));
+  try {
+    const add = (pid, ppid, name) => { fs.mkdirSync(path.join(d, String(pid))); fs.writeFileSync(path.join(d, String(pid), 'stat'), `${pid} (${name}) S ${ppid} 1 1 0`); };
+    add(10, 1, 'node'); add(11, 10, 'chrome (renderer)'); add(12, 11, 'chrome) x'); add(20, 1, 'other'); fs.mkdirSync(path.join(d, 'self'));
+    assert.deepEqual(procTree(10, d).sort(), [10, 11, 12]);
+    assert.deepEqual(procTree(99, path.join(d, 'missing')), [99]);
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});

@@ -14,7 +14,7 @@ const INDEX = path.join(DATA_DIR, 'index.json');
 
 // ---------- what a single file is
 function category(rel, name) {
-  const r = '\\' + rel.toLowerCase();
+  const r = '\\' + rel.toLowerCase().replace(/\//g, '\\');   // one slash style (Linux paths use /)
   if (/\\render\\profiles\\|\\profiles\\w\d|\\chrome-profile/.test(r)) return 'profile';
   if (/\\chunks_(prev|v\d)[^\\]*\\/.test(r)) return 'oldChunk';
   if (/\\chunks\\/.test(r) || /^c_\d{3,}\.mp4$/i.test(name)) return 'chunk';

@@ -24,7 +24,23 @@ const PS = `Get-CimInstance Win32_Process | ForEach-Object { [pscustomobject]@{ 
 
 let cache = { at: 0, list: [] }, running = null;
 
+// Linux (RunPod pod): ps gives the same rows (pid, parent, name, resident memory); headless renders are already skipped by name
+function scanLinux() {
+  return new Promise(resolve => execFile('ps', ['-eo', 'pid=,ppid=,rss=,comm='], { maxBuffer: 16 << 20, timeout: 20000 }, (err, out) => {
+    if (err) return resolve(null);
+    const groups = new Map();
+    for (const l of String(out).split('\n')) {
+      const m = l.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(.+)$/); if (!m) continue;
+      const key = m[4].trim().toLowerCase(); if (SKIP.has(key) || /^(chrome|chromium|headless_shell)/.test(key)) continue;
+      const name = NAMES[key] || m[4].trim(), g = groups.get(name) || { name, bytes: 0, procs: 0 };
+      g.bytes += +m[3] * 1024; g.procs++; groups.set(name, g);
+    }
+    resolve([...groups.values()].sort((a, b) => b.bytes - a.bytes));
+  }));
+}
+
 function scan() {
+  if (process.platform !== 'win32') return scanLinux();
   return new Promise(resolve => {
     execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', PS], { windowsHide: true, maxBuffer: 16 << 20, timeout: 20000 }, (err, out) => {
       if (err) return resolve(null);

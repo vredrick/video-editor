@@ -12,7 +12,8 @@ import { ENCODERS, LABELS, encoderEnv } from './encoders.js';
 const code = fs.readFileSync(new URL('./jobs.js', import.meta.url), 'utf8')
   .replace(/^import .+;\r?$/gm, '').replace(/\bexport /g, '');
 const flush = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
-function harness() {
+function harness(opts = {}) {
+  const killed = [];
   const base = path.resolve('.test-tmp', 'queue-fixture');
   const files = new Set(), children = [], timers = [], events = [], log = [];
   let pid = 100, workers = 1, maxParallel = 1, guard = { running: false }, encoder = 'auto';
@@ -34,7 +35,7 @@ function harness() {
     readJson: (file, fallback) => file.endsWith('project.json') ? { render: { workers } }
       : file.endsWith('manifest.json') ? { dur: 2, fps: 60, chunkFrames: 120, chunkSec: 2 } : fallback,
     writeJson() {}, config: () => ({ maxParallelRenders: maxParallel, render: { encoder } }), ENCODERS, LABELS, encoderEnv, project: id => projects.get(id),
-    guardState: () => guard, guardTrack: () => { }, ramHogsNow: async () => [], ramNote: () => null,
+    guardState: () => guard, guardTrack: () => { }, IS_WIN: opts.win ?? true, killTree: pid => killed.push(pid), ramHogsNow: async () => [], ramNote: () => null,
     vhDir: p => path.join(p.path, '.videohub'), listNotes: () => [], updateNote() {},
     linkOutput: () => null, rescanProject: async () => {}, now: () => new Date().toISOString(),
     pLimit: async (items, n, fn) => Promise.all(items.map(fn)), pickFolderWin() {},
@@ -42,7 +43,7 @@ function harness() {
   };
   vm.createContext(ctx); vm.runInContext(code + '\nglobalThis.queue = {create,cancel,approve,get,pump,spawnLogged,runJob,recipe,procs,executing,onJob};', ctx);
   ctx.queue.onJob(event => events.push(event));
-  return { ...ctx.queue, children, events, files, log, projects, timers,
+  return { ...ctx.queue, children, events, files, log, projects, timers, killed,
     setWorkers: value => { workers = value; }, setGuard: value => { guard = value; }, setParallel: value => { maxParallel = value; }, setEncoder: value => { encoder = value; },
     async close(child, output = '', status = 0) {
       if (status === 0) {
@@ -123,6 +124,13 @@ test('cancelled render retains the queue slot until child exit and stays cancell
   assert.equal(h.children.at(-1).cmd, 'taskkill');
   await h.close(child, '', 1); assert.equal(h.get(job.id).state, 'cancelled'); assert.equal(h.executing.size, 0);
   assert.equal(h.events.some(e => e.type === 'failed'), false); assert.equal(h.cancel(job.id), false);
+});
+
+test('on Linux a cancelled render kills its whole process tree (no taskkill)', async () => {
+  const h = harness({ win: false }), job = await h.create({ project: 'p1', mode: 'full' }); await flush();
+  const child = h.children[0]; assert.equal(h.cancel(job.id), true);
+  assert.deepEqual(h.killed, [child.pid]); assert.equal(h.children.some(c => c.cmd === 'taskkill'), false);
+  await h.close(child, '', 1); assert.equal(h.get(job.id).state, 'cancelled');
 });
 
 test('cancellation during mux kills that process and does not register an output', async () => {
