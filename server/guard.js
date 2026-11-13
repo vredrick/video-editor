@@ -1,4 +1,4 @@
-// VideoHub's render protection, built into the hub (plain Node + Windows' own PowerShell; no helper program).
+// VideoHub's render protection, built into the hub (plain Node + Windows' own PowerShell, or nice + taskset on Linux; no helper program).
 // Nov 2026: the old C# agent (guard\VideoHubAgent.exe, formerly RenderGuard.exe, compiled on each PC at install) is gone.
 // Windows Smart App Control blocks unsigned programs it has never seen, and its low-level calls (reading other
 // processes' memory, freezing processes, global hotkeys) looked like malware to antivirus tools.
@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { config } from './config.js';
-import { APPDATA, HUB_DIR, readJson, run, processAlive } from './util.js';
+import { APPDATA, HUB_DIR, IS_WIN, readJson, run, processAlive } from './util.js';
 
 const RG = path.join(APPDATA, 'RenderGuard');   // settings.txt and the old agent's history.log (folder name kept)
 const MB = 1048576, CORES = os.cpus().length;
@@ -40,7 +40,7 @@ function current() {
 let S = current();
 export async function guardSettings() {
   const out = current();
-  const r = await run('reg', ['query', RUN_KEY, '/v', RUN_NAME]);
+  const r = IS_WIN ? await run('reg', ['query', RUN_KEY, '/v', RUN_NAME]) : { code: 1 };   // Linux: no "start with Windows"
   out.Startup = r.code === 0 && /open\.vbs/i.test(r.stdout);
   out.exe = null; out.builtIn = true;
   return out;
@@ -50,11 +50,11 @@ export async function saveGuardSettings(patch) {
   for (const k of Object.keys(DEFAULTS)) if (patch[k] != null) kv[k] = String(typeof patch[k] === 'boolean' ? (patch[k] ? 1 : 0) : Math.round(+patch[k]));
   fs.mkdirSync(RG, { recursive: true });
   fs.writeFileSync(SETTINGS, Object.entries(kv).map(([k, v]) => `${k}=${v}`).join('\r\n'));
-  if (patch.Startup != null) {
+  if (IS_WIN && patch.Startup != null) {
     if (patch.Startup) await run('reg', ['add', RUN_KEY, '/v', RUN_NAME, '/t', 'REG_SZ', '/d', startupCommand(), '/f']);
     else await run('reg', ['delete', RUN_KEY, '/v', RUN_NAME, '/f']);
   }
-  await run('reg', ['delete', RUN_KEY, '/v', RUN_LEGACY, '/f']);   // the old agent's autostart, if an old install left it
+  if (IS_WIN) await run('reg', ['delete', RUN_KEY, '/v', RUN_LEGACY, '/f']);   // the old agent's autostart, if an old install left it
   guardCommand('reload');
   return guardSettings();
 }
@@ -92,12 +92,37 @@ async function apply(r, force = false) {
   r.applied = key;
   try { os.setPriority(r.rootPid, PRIO[w.prio]); } catch { }
   const aff = mask(w.cores);
+  if (!IS_WIN) return applyLinux(r.rootPid, PRIO[w.prio], aff);
   const script = [
     `$ids = @(${r.rootPid}); $all = @(Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId)`,
     'do { $n = $ids.Count; $ids = @($ids + @($all | Where-Object { $ids -contains $_.ParentProcessId -and $ids -notcontains $_.ProcessId } | ForEach-Object { $_.ProcessId })) } while ($ids.Count -gt $n)',
     `foreach ($i in $ids) { try { $p = Get-Process -Id $i -ErrorAction Stop; $p.PriorityClass = '${w.prio}'${aff != null ? `; $p.ProcessorAffinity = [IntPtr]${aff}` : ''} } catch { } }`,
   ].join('\n');
   await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script]);
+}
+
+// Linux (RunPod pods): the same limits through /proc, os.setPriority (nice) and taskset; children started later inherit both
+export function procTree(root, procDir = '/proc') {
+  const kids = new Map();
+  let ents = []; try { ents = fs.readdirSync(procDir).filter(n => /^\d+$/.test(n)); } catch { return [root]; }
+  for (const n of ents) {
+    let st; try { st = fs.readFileSync(path.join(procDir, n, 'stat'), 'utf8'); } catch { continue; }
+    const ppid = +st.slice(st.lastIndexOf(')') + 2).split(' ')[1];   // the name in (…) may hold spaces
+    if (!kids.has(ppid)) kids.set(ppid, []); kids.get(ppid).push(+n);
+  }
+  const out = [root];
+  for (let i = 0; i < out.length; i++) for (const k of kids.get(out[i]) || []) if (!out.includes(k)) out.push(k);
+  return out;
+}
+async function applyLinux(rootPid, prio, aff) {
+  for (const pid of procTree(rootPid)) {
+    try { os.setPriority(pid, prio); } catch { }
+    if (aff != null) await run('taskset', ['-a', '-p', aff.toString(16), String(pid)]);
+  }
+}
+export function killTree(rootPid) {
+  if (IS_WIN) return run('taskkill', ['/PID', String(rootPid), '/T', '/F']);
+  for (const pid of procTree(rootPid).reverse()) try { process.kill(pid, 'SIGKILL'); } catch { }
 }
 
 // every 3 s while protection is on: forget renders that ended, slow down / restore for RAM
@@ -134,7 +159,7 @@ export function guardCommand(action, rootPid) {
   const pick = rootPid ? [tracked.get(+rootPid)].filter(Boolean) : [...tracked.values()];
   let note = null;
   if (action === 'reload') { S = current(); for (const r of tracked.values()) apply(r).catch(() => { }); return { ok: true, note }; }
-  if (action === 'kill') { for (const r of pick) run('taskkill', ['/PID', String(r.rootPid), '/T', '/F']); return { ok: true, note }; }
+  if (action === 'kill') { for (const r of pick) killTree(r.rootPid); return { ok: true, note }; }
   if (/^(pause|pauseAll|slow)$/.test(action)) { if (action !== 'slow') note = 'Pausing is no longer available: the render was slowed down to the minimum instead.'; for (const r of pick) { r.slow = 'manual'; apply(r).catch(() => { }); } }
   else if (/^(resume|resumeAll|normal)$/.test(action)) for (const r of pick) { r.slow = null; apply(r).catch(() => { }); }
   else return { ok: false, note: 'unknown command' };

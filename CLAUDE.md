@@ -1,6 +1,7 @@
 # VideoHub: notes for Claude working on this repo
 
-Local Windows hub for videos written as code (catalog, live preview with no render, review notes, protected render
+Local Windows hub (also headless on Linux / the RunPod workstation: [docs/LINUX.md](docs/LINUX.md),
+[runpod/README.md](runpod/README.md)) for videos written as code (catalog, live preview with no render, review notes, protected render
 queue, MCP tools). Node 22+, ES modules, no build step, vanilla-JS UI, optional C# agent. Architecture, map and the
 pitfalls behind past bugs: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). What a film project must look like:
 [docs/PROJECT-CONTRACT.md](docs/PROJECT-CONTRACT.md).

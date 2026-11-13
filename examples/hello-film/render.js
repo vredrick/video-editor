@@ -35,11 +35,15 @@ function loadPuppeteer() {
   console.error('puppeteer-core not found: run "npm install" in this folder (or render through VideoHub, which ships it).');
   process.exit(2);
 }
-// the browser: CHROME env, else Edge, else Chrome
+// the browser: CHROME env, else Edge, else Chrome; on Linux (RunPod) a system Chromium or a Playwright one
 function browserPath() {
+  const pw = [process.env.PLAYWRIGHT_BROWSERS_PATH, '/workspace/webrender/browsers', '/opt/pw-browsers'].filter(Boolean).flatMap(d => {
+    try { return fs.readdirSync(d).filter(n => /^chromium-\d+$/.test(n)).sort((a, b) => +b.split('-')[1] - +a.split('-')[1]).flatMap(n => [path.join(d, n, 'chrome-linux64/chrome'), path.join(d, n, 'chrome-linux/chrome')]); } catch (e) { return []; }
+  });
   const c = [process.env.CHROME,
     'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', 'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
-    'C:/Program Files/Google/Chrome/Application/chrome.exe', path.join(os.homedir(), 'AppData/Local/Google/Chrome/Application/chrome.exe')].filter(Boolean);
+    'C:/Program Files/Google/Chrome/Application/chrome.exe', path.join(os.homedir(), 'AppData/Local/Google/Chrome/Application/chrome.exe'),
+    '/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome', ...pw].filter(Boolean);
   const f = c.find(x => fs.existsSync(x));
   if (!f) { console.error('No Edge or Chrome found (set CHROME to a Chromium browser).'); process.exit(2); }
   return f;
@@ -259,7 +263,7 @@ async function shotChunk(w, a, b, tmp, hold) {
   // 2D canvases are drawn in software: Chromium moves a canvas that is read back often (the raw path) to software
   // drawing anyway, and with both paths on the same rasteriser raw frames and screenshots are pixel-identical (WebGL is
   // not affected)
-  const launch = () => puppeteer.launch({ executablePath: exe, headless: 'new', protocolTimeout: 0, args: ['--allow-file-access-from-files', '--force-device-scale-factor=1', '--hide-scrollbars', '--disable-accelerated-2d-canvas'] });
+  const launch = () => puppeteer.launch({ executablePath: exe, headless: 'new', protocolTimeout: 0, args: ['--allow-file-access-from-files', '--force-device-scale-factor=1', '--hide-scrollbars', '--disable-accelerated-2d-canvas', ...(process.platform === 'linux' && process.getuid && process.getuid() === 0 ? ['--no-sandbox'] : [])] });
 
   if (process.argv[2] === 'snap') {
     const br = await launch(), w = await openPage(br, null, 0); fs.mkdirSync('snaps', { recursive: true });

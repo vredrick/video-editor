@@ -4,7 +4,7 @@
 // or in data/config.json. See docs/MIGRATING.md for older installs.
 import fs from 'node:fs';
 import path from 'node:path';
-import { DATA_DIR, DESKTOP, DOCUMENTS, readJson, writeJson } from './util.js';
+import { DATA_DIR, DESKTOP, DOCUMENTS, HOME, IS_WIN, readJson, writeJson } from './util.js';
 import { ENCODERS } from './encoders.js';
 
 const FILE = path.join(DATA_DIR, 'config.json');
@@ -19,7 +19,8 @@ const SKIP = new Set(['node_modules', '.git', '.claude', 'VideoHub', '$RECYCLE.B
 // point it at a scratch folder) → config.baseDir (chosen in setup) → Documents\VideoHub. Installs from before baseDir
 // existed have no key and keep Documents\VideoHub; their explicit folders are kept anyway (see config()).
 const okBase = b => typeof b === 'string' && path.isAbsolute(b) ? b : null;
-export const DEFAULT_BASE = () => path.join(DOCUMENTS, 'VideoHub');
+// Linux: /workspace/videohub on a RunPod pod (the network volume outlives the pod), else ~/VideoHub
+export const DEFAULT_BASE = () => IS_WIN ? path.join(DOCUMENTS, 'VideoHub') : fs.existsSync('/workspace') ? '/workspace/videohub' : path.join(HOME, 'VideoHub');
 export const baseDir = () => process.env.VIDEOHUB_BASE_DIR || okBase(cfg ? cfg.baseDir : savedBase) || DEFAULT_BASE();
 export const defaultFilmsDir = () => path.join(baseDir(), 'films');
 // container sub-folders never listed as projects (helpers next to films) unless they have their own render script.
@@ -44,7 +45,7 @@ export function discoverRoots() {
       const p = path.join(top, e.name), lp = lower(p);
       if (lp === lower(baseDir())) continue;
       // skip folders that are a root, sit inside one, or contain one
-      if (roots.some(r => lower(r.path) === lp || lp.startsWith(lower(r.path) + '\\') || lower(r.path).startsWith(lp + '\\'))) continue;
+      if (roots.some(r => lower(r.path) === lp || lp.startsWith(lower(r.path) + path.sep) || lower(r.path).startsWith(lp + path.sep))) continue;
       if (fs.existsSync(path.join(p, 'server', 'hub.js'))) continue;   // a VideoHub install
       if (hasRenderCode(p)) { add(p, 'project', false); continue; }
       let subs = []; try { subs = fs.readdirSync(p, { withFileTypes: true }).filter(s => s.isDirectory() && !SKIP.has(s.name)); } catch { }

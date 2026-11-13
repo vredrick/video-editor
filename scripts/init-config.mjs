@@ -17,7 +17,8 @@ import { ENCODERS, detectEncoders } from '../server/encoders.js';
 
 export const HUB = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const low = p => path.resolve(p).toLowerCase();
-const inside = (c, p) => low(c) === low(p) || low(c).startsWith(low(p).replace(/\\$/, '') + '\\');
+const inside = (c, p) => low(c) === low(p) || low(c).startsWith(low(p).replace(/[\\/]$/, '') + path.sep);
+const WIN = process.platform === 'win32';   // Linux (a RunPod pod): /workspace/videohub and other absolute paths
 
 export const README = `This is your VideoHub workspace: everything VideoHub makes lives here.
 
@@ -34,9 +35,11 @@ VideoHub never deletes anything here by itself. Settings > Folders shows and cha
 export function checkWorkspace(p, hubDir = HUB) {
   if (typeof p !== 'string' || !p.trim()) return 'Type a folder, for example D:\\Videos\\VideoHub.';
   p = p.trim().replace(/^"(.*)"$/, '$1');
-  if (!/^([a-zA-Z]:[\\/]|\\\\[^\\]+\\[^\\]+)/.test(p)) return 'Type a full path that starts with a drive letter, for example D:\\Videos\\VideoHub.';
+  if (!WIN && !p.startsWith('/')) return 'Type a full path that starts with /, for example /workspace/videohub.';
+  if (!WIN && path.resolve(p) === '/') return 'Pick a folder, not the whole disk (for example /workspace/videohub).';
+  if (WIN && !/^([a-zA-Z]:[\\/]|\\\\[^\\]+\\[^\\]+)/.test(p)) return 'Type a full path that starts with a drive letter, for example D:\\Videos\\VideoHub.';
   const r = path.resolve(p);
-  if (path.parse(r).root.toLowerCase() === (r.endsWith('\\') ? r : r + '\\').toLowerCase()) return 'Pick a folder, not a whole drive (for example ' + r.replace(/\\?$/, '\\') + 'VideoHub).';
+  if (WIN && path.parse(r).root.toLowerCase() === (r.endsWith('\\') ? r : r + '\\').toLowerCase()) return 'Pick a folder, not a whole drive (for example ' + r.replace(/\\?$/, '\\') + 'VideoHub).';
   if (inside(r, hubDir)) return 'Pick a folder outside the VideoHub program folder (updates replace that folder).';
   let a = r; while (!fs.existsSync(a)) { const up = path.dirname(a); if (up === a) return 'The drive ' + path.parse(r).root + ' does not exist on this PC.'; a = up; }
   try { if (!fs.statSync(a).isDirectory()) return a === r ? 'That is a file, not a folder.' : a + ' is a file, not a folder.'; } catch { return 'That folder cannot be read.'; }

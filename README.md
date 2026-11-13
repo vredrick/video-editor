@@ -8,7 +8,8 @@ you are happy do you render — once, in a queue that keeps your PC usable, and 
 changed. It is for people who make explainers, shorts and animations with Claude Code and are tired of rendering a
 whole film to check one fix.
 
-> **Windows 10/11 only.** VideoHub uses Windows APIs (Job Objects, the Recycle Bin, Explorer, Edge) and PowerShell.
+> **Windows 10/11**, plus a headless Linux mode for a RunPod GPU/CPU pod ([runpod/README.md](runpod/README.md),
+> [docs/LINUX.md](docs/LINUX.md)): there Claude drives the render queue and notes with the `hub_*` tools.
 
 ![Live preview with a note on a frame](docs/screenshots/review-live-preview.png)
 

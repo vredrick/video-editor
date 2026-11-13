@@ -11,6 +11,11 @@ export const HUB_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 // VIDEOHUB_DATA_DIR: npm test keeps its config, caches and queue out of the install's own data folder
 export const DATA_DIR = process.env.VIDEOHUB_DATA_DIR ? path.resolve(process.env.VIDEOHUB_DATA_DIR) : path.join(HUB_DIR, 'data');
 export const HOME = os.homedir();
+// Windows is the home platform; on Linux (the RunPod workstation) the same hub runs headless: no Explorer, no Recycle Bin,
+// CPU limits through nice + taskset, Chromium instead of Edge (see docs/LINUX.md)
+export const IS_WIN = process.platform === 'win32';
+// a pod has no screen: never try to open Explorer, Edge or a folder dialog there
+if (!IS_WIN && !process.env.VIDEOHUB_NO_WINDOW) process.env.VIDEOHUB_NO_WINDOW = '1';
 export const DESKTOP = (() => {
   // OneDrive can move the Desktop; prefer the one that exists
   for (const d of [path.join(HOME, 'Desktop'), path.join(HOME, 'OneDrive', 'Desktop'), path.join(HOME, 'OneDrive', 'Masa\u00fcst\u00fc')]) if (fs.existsSync(d)) return d;
@@ -20,7 +25,7 @@ export const DOCUMENTS = (() => {
   for (const d of [path.join(HOME, 'Documents'), path.join(HOME, 'OneDrive', 'Documents')]) if (fs.existsSync(d)) return d;
   return path.join(HOME, 'Documents');
 })();
-export const APPDATA = process.env.APPDATA || path.join(HOME, 'AppData', 'Roaming');
+export const APPDATA = process.env.APPDATA || (IS_WIN ? path.join(HOME, 'AppData', 'Roaming') : process.env.XDG_CONFIG_HOME || path.join(HOME, '.config'));
 export const TEMP = os.tmpdir();
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -34,7 +39,7 @@ export const isInside = (child, parent) => { const c = realNorm(child), p = real
 // and the install folder can have any name (a GitHub ZIP unpacks as VideoHub-main). Case-insensitive, both slash styles.
 const slashes = s => String(s || '').toLowerCase().replace(/[\\/]+/g, '/');
 export const refersToHub = (s, hub = HUB_DIR) => new RegExp(slashes(hub).replace(/\/$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:/|["\'\\s]|$)').test(slashes(s));
-export const shortPath = p => (isInside(p, DESKTOP) ? path.relative(DESKTOP, p) : isInside(p, HOME) ? '~\\' + path.relative(HOME, p) : p) || p;
+export const shortPath = p => (isInside(p, DESKTOP) ? path.relative(DESKTOP, p) : isInside(p, HOME) ? '~' + path.sep + path.relative(HOME, p) : p) || p;
 
 export function readJson(file, fallback = null) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '')); } catch { return fallback; }
@@ -72,12 +77,29 @@ function which(name, extra = []) {
   for (const d of dirs) { const f = path.join(d, name); if (d && fs.existsSync(f)) return f; }
   return null;
 }
-export const TOOLS = {
+// Linux: CHROME (or VIDEOHUB_BROWSER), a system Chromium/Chrome, else the newest Playwright Chromium in PLAYWRIGHT_BROWSERS_PATH,
+// the RunPod volume's /workspace/webrender/browsers or /opt/pw-browsers (headless renders only; there is no window to open)
+export function linuxBrowser(env = process.env, exists = fs.existsSync, readdir = d => fs.readdirSync(d)) {
+  const direct = [env.VIDEOHUB_BROWSER, env.CHROME, '/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable'].filter(Boolean);
+  for (const f of direct) if (exists(f)) return f;
+  for (const dir of [env.PLAYWRIGHT_BROWSERS_PATH, '/workspace/webrender/browsers', '/opt/pw-browsers'].filter(Boolean)) {
+    let subs = []; try { subs = readdir(dir).filter(n => /^chromium-\d+$/.test(n)).sort((a, b) => +b.split('-')[1] - +a.split('-')[1]); } catch { continue; }
+    for (const s of subs) for (const rel of ['chrome-linux64/chrome', 'chrome-linux/chrome']) { const f = path.join(dir, s, rel); if (exists(f)) return f; }
+  }
+  return null;
+}
+export const TOOLS = IS_WIN ? {
   ffmpeg: which('ffmpeg.exe', ['C:\\ffmpeg\\bin']) || 'ffmpeg',
   ffprobe: which('ffprobe.exe', ['C:\\ffmpeg\\bin']) || 'ffprobe',
   node: process.execPath,
   edge: ['C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe', 'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe'].find(f => fs.existsSync(f)) || null,
   chrome: ['C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe', path.join(HOME, 'AppData\\Local\\Google\\Chrome\\Application\\chrome.exe')].find(f => fs.existsSync(f)) || null,
+} : {
+  ffmpeg: which('ffmpeg') || 'ffmpeg',
+  ffprobe: which('ffprobe') || 'ffprobe',
+  node: process.execPath,
+  edge: null,
+  chrome: linuxBrowser(),
 };
 
 // ---------- ffprobe with a persistent cache (path + size + mtime)

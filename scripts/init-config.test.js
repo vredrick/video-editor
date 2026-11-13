@@ -55,9 +55,10 @@ test('workspace checks: full path, not a drive, not inside the install, not a fi
   const d = scratch(), f = path.join(d, 'file.txt'); fs.writeFileSync(f, 'x');
   assert.equal(checkWorkspace(path.join(d, 'new', 'deeper'), hubDir), null);
   assert.match(checkWorkspace('videos'), /full path/);
-  assert.match(checkWorkspace('C:\\'), /whole drive/);
+  const drive = process.platform === 'win32' ? 'C:\\' : '/';   // Linux (RunPod): '/' is "the whole disk"
+  assert.match(checkWorkspace(drive), /whole (drive|disk)/);
   assert.match(checkWorkspace(path.join(HUB, 'films')), /outside the VideoHub program folder/);
   assert.match(checkWorkspace(f, hubDir), /file/);
-  assert.throws(() => initConfig({ dataDir: path.join(d, 'data'), workspace: 'C:\\', discover: none, hubDir }), /whole drive/);
+  assert.throws(() => initConfig({ dataDir: path.join(d, 'data'), workspace: drive, discover: none, hubDir }), /whole (drive|disk)/);
   assert.throws(() => initConfig({ dataDir: path.join(d, 'data'), workspace: path.join(d, 'w'), encoder: 'turbo', discover: none, hubDir }), /encoder/);
 });

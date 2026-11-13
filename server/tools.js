@@ -84,7 +84,7 @@ export const TOOLS = {
       const films = (roots.find(r => r.type === 'container') || {}).path;
       return [
         `Workspace: ${c.workspace}`,
-        films ? `New films go in: ${films}\\<film-name>  (one folder per film; copy templates\\new-film from the VideoHub folder)` : 'No films folder is set: ask the user to add one in VideoHub > Settings > Folders.',
+        films ? `New films go in: ${path.join(films, '<film-name>')}  (one folder per film; copy ${path.join('templates', 'new-film')} from the VideoHub folder)` : 'No films folder is set: ask the user to add one in VideoHub > Settings > Folders.',
         `Finished renders are collected in: ${c.outputsDir}  (VideoHub links every render there by day; do not write there)`,
         `Sounds: ${c.soundLibDir}  ·  Thumbnails: ${c.thumbstudio?.globalDir}  ·  Archive: ${c.archiveDir}`,
         roots.length > 1 ? 'Other watched folders: ' + roots.filter(r => r.path !== films).map(r => `${r.path} (${r.type})`).join(', ') : '',
