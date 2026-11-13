@@ -164,8 +164,10 @@ export const TOOLS = {
     run: async a => {
       const p = await resolve(a.project); const r = await call('POST', `/api/project/${p.id}/review/import`, { dir: a.dir && path.resolve(a.dir), all: a.all });
       const L = [`Imported from the review page: ${r.added.length} new, ${r.updated.length} changed, ${r.kept.length} unchanged, ${r.skipped.length} drafts skipped.`];
-      for (const x of r.added) L.push(`  #${x.note} ← page ${x.page}${x.chunks ? ' · chunks ' + x.chunks.join(',') : ''} · ${x.text}`);
-      for (const x of r.updated) L.push(`  #${x.note} ← page ${x.page} (changed on the page)`);
+      const pic = x => x.snapshotId ? `\n     the user's capture${x.kind === 'clip' ? ' (first frame of the clip)' : ''}: Artifact read {url, path:"${x.snapshotId}"}, then look at it` : '';
+      for (const x of r.added) L.push(`  #${x.note} ← page ${x.page}${x.chunks ? ' · chunks ' + x.chunks.join(',') : ''} · ${x.text}${pic(x)}`);
+      for (const x of r.updated) L.push(`  #${x.note} ← page ${x.page} (changed on the page)${pic(x)}`);
+      if (r.added.length || r.updated.length) L.push('Look at every capture before fixing: it is what the user saw. VideoHub also cut the exact frames from the full-quality video (hub_notes lists them).');
       if (r.notes.length) L.push(`Next: hub_notes, fix, hub_note_update each, then hub_render({mode:"partial", notes:[${r.notes.join(',')}]}).`);
       return L.join('\n');
     },

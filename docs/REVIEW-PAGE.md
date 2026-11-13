@@ -29,7 +29,9 @@ next session reads them from the database the same way.
    and no `capabilities`. Pass the url to `hub_review_build` once so it is remembered.
 3. On the wake (a comment sent to Claude): ArtifactData `list` the `notes` collection with `out_dir`, then
    `hub_review_import {dir}`. Only sent notes are taken; an edited one updates its VideoHub note (and reopens it if it
-   was fixed). The page note id is kept in `.videohub/review/state.json`.
+   was fixed). The page note id is kept in `.videohub/review/state.json`. The import lists each note's capture
+   (`snapshotId`, the frame the user captured; a clip's first frame): fetch it with Artifact `read` and `path` = that
+   id and look at it before fixing. The comment that wakes Claude carries text only, never the picture.
 4. Fix only what each note asks; `hub_note_update` (fixed + one sentence). Render partial: by notes, or by `seconds`
    when a change must cover a whole scene (a fix in only some chunks of a scene would jump at the chunk edge).
 5. `hub_review_build` again (next round, `note` = what changed), publish to the same url, then

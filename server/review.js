@@ -113,10 +113,10 @@ export async function importNotes(p, { dir, file, notes, all = false }) {
     if (!all && n.state !== 'submitted') { res.skipped.push(n.id); continue; }
     const round = st.rounds.find(r => r.round === n.round) || st.rounds[st.rounds.length - 1], body = toHubNote(n, round?.file || null);
     const known = st.imported[n.id] && hub.get(st.imported[n.id]);
-    if (!known) { const h = await addNote(p, body); st.imported[n.id] = h.id; res.added.push({ page: n.id, note: h.id, chunks: h.chunks, text: h.text }); continue; }
+    if (!known) { const h = await addNote(p, body); st.imported[n.id] = h.id; res.added.push({ page: n.id, note: h.id, chunks: h.chunks, text: h.text, snapshotId: n.snapshotId || null, kind: n.kind }); continue; }
     if (known.text !== body.text || known.t !== body.t || known.t2 !== body.t2) {
       updateNote(p, known.id, { text: body.text, t: body.t, t2: body.t2, ...(['fixed', 'approved'].includes(known.status) ? { status: 'reopened' } : {}) }, 'user');
-      res.updated.push({ page: n.id, note: known.id });
+      res.updated.push({ page: n.id, note: known.id, snapshotId: n.snapshotId || null });
     } else res.kept.push({ page: n.id, note: known.id });
   }
   saveState(p, st);
