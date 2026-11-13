@@ -35,6 +35,10 @@ node server/cli.js hub_render '{"project":"hello-film","mode":"full","wait":true
 A render longer than a Jupyter call: drop `wait`, then poll with `hub_job`. The hub exits by itself 2 minutes after the
 queue is empty. Deliver an output with jrun `get`, or push it to Drive with the volume's rclone.
 
+## Review on your phone
+Renders are reviewed on the private claude.ai review page, and its **Send to Claude** button wakes the session
+(docs/REVIEW-PAGE.md): `hub_review_build`, publish, `hub_review_import`, fix, partial render, next round.
+
 ## What differs from Windows
 See `docs/LINUX.md`: no window (Explorer/Edge/folder picker), CPU limits with `nice` + `taskset`, cleanup moves items to
 `/workspace/videohub/trash/<time>/` instead of the Recycle Bin, Chromium instead of Edge.

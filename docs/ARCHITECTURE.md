@@ -39,6 +39,7 @@ What film projects must look like is in [PROJECT-CONTRACT.md](PROJECT-CONTRACT.m
 | `server/outputs.js`, `ciktilar.js`, `ciktilar-dir.js` | "Recent renders" list; the global outputs folder (hard links, one folder per day). |
 | `server/janitor.js` | Cleanup candidates (safe/deep), Recycle Bin, archive; one cleanup at a time. |
 | `server/tools.js` | The `hub_*` tools. |
+| `server/review.js`, `templates/review-page/` | The claude.ai review page: review copy + strip + page per round, page notes → VideoHub notes, status back (docs/REVIEW-PAGE.md). |
 | `server/transcript.js`, `layers.js`, `scenes.js` | Narration text, sound stems + cues, scene lane. |
 | `server/tweaks.js`, `sound.js`, `vhsound.mjs`, `soundedit.js`, `sfxlib.mjs`, `edit2d.js` | The film's `tweaks.json` (one writer), mix rebuilds, added sound clips, ready-made effects, 2D layers. |
 | `server/example.js` | First-run helper that copies `examples/hello-film` into the films folder. |

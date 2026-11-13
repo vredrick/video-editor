@@ -35,7 +35,7 @@ whole film to check one fix.
 - **Thumbnail Studio** — sketch a thumbnail (posed mannequins, objects, text, camera/depth/light), send the brief to
   Claude, which makes the variants; annotate a variant, add the final text in code.
 - **Claude tools (MCP)** — `hub_live`, `hub_notes`, `hub_note_update`, `hub_render`, `hub_job`, `hub_project`, `hub_workspace`,
-  `hub_register_version`, `hub_cleanup`, `hub_thumb_*`; the same tools work from a shell (`node server/cli.js`).
+  `hub_register_version`, `hub_cleanup`, `hub_thumb_*`, `hub_review_*` (the claude.ai review page with Send to Claude: docs/REVIEW-PAGE.md); the same tools work from a shell (`node server/cli.js`).
 
 ![Projects](docs/screenshots/projects.png)
 

@@ -147,6 +147,39 @@ export const TOOLS = {
     },
   },
 
+  hub_review_build: {
+    description: 'Make the private claude.ai review page for a rendered version (video-review-notes): a review copy under ~14 MB, the strip thumbnails and page.html in <film>/.videohub/review/round-N/. Then publish page.html with the Artifact tool, files {"review.mp4","strip.jpg"} from the result, capabilities {db:{}, assets:{}, user:{}, comments:{}} on the first publish (omit them on later rounds, same url). The page\'s "Send to Claude" wakes the session watching it.',
+    schema: { project: z.string().optional(), file: z.string().optional().describe('Which video (default: the latest)'), round: z.number().optional(), title: z.string().optional(), url: z.string().optional().describe('The page\'s claude.ai URL once published (remembered for later rounds)'), note: z.string().optional().describe('Footer line: what changed in this round') },
+    run: async a => {
+      const p = await resolve(a.project); const r = await call('POST', `/api/project/${p.id}/review/build`, { file: a.file, round: a.round, title: a.title, url: a.url, note: a.note }, 600e3);
+      return [`Review page round ${r.round} for ${r.video} (${r.duration.toFixed(2)} s, ${r.fps} fps): review copy ${r.sizeMB} MB, ${r.sections} sections from ${r.sectionSource}.`,
+        `Page: ${r.page}`, `Files: review.mp4 = ${r.files['review.mp4']} · strip.jpg = ${r.files['strip.jpg']}`,
+        r.url ? `Publish to the same page: ${r.url} (omit capabilities to keep them).` : 'First publish: capabilities {db:{}, assets:{}, user:{}, comments:{}}, icon video; then run hub_review_build again with url to remember it (or pass url next round).',
+        'When the user presses Send to Claude: ArtifactData list notes with out_dir, then hub_review_import({dir}).'].join('\n');
+    },
+  },
+  hub_review_import: {
+    description: 'Bring the notes sent from the review page into VideoHub (after ArtifactData list of the page\'s "notes" collection with out_dir). New notes are added, edited ones updated (a fixed note edited on the page opens again); each remembers its page note id. Then fix, mark with hub_note_update, render partial with the note numbers, and hub_review_status.',
+    schema: { project: z.string().optional(), dir: z.string().optional().describe('The out_dir folder (or a JSON file)'), all: z.boolean().optional().describe('Also drafts, not only sent notes') },
+    run: async a => {
+      const p = await resolve(a.project); const r = await call('POST', `/api/project/${p.id}/review/import`, { dir: a.dir && path.resolve(a.dir), all: a.all });
+      const L = [`Imported from the review page: ${r.added.length} new, ${r.updated.length} changed, ${r.kept.length} unchanged, ${r.skipped.length} drafts skipped.`];
+      for (const x of r.added) L.push(`  #${x.note} ← page ${x.page}${x.chunks ? ' · chunks ' + x.chunks.join(',') : ''} · ${x.text}`);
+      for (const x of r.updated) L.push(`  #${x.note} ← page ${x.page} (changed on the page)`);
+      if (r.notes.length) L.push(`Next: hub_notes, fix, hub_note_update each, then hub_render({mode:"partial", notes:[${r.notes.join(',')}]}).`);
+      return L.join('\n');
+    },
+  },
+  hub_review_status: {
+    description: 'The review page\'s note updates (status done/working/open and Claude\'s reply) from VideoHub\'s notes, as one ArtifactData batch. Pass the same out_dir as the import so each write is pinned to the version read.',
+    schema: { project: z.string().optional(), dir: z.string().optional(), versions: z.record(z.string(), z.number()).optional().describe('{pageNoteId: version} from the ArtifactData list (pins each write)'), out: z.string().optional().describe('Write the writes array to this JSON file') },
+    run: async a => {
+      const p = await resolve(a.project); const r = await call('POST', `/api/project/${p.id}/review/status`, { dir: a.dir && path.resolve(a.dir), versions: a.versions });
+      if (a.out) fs.writeFileSync(a.out, JSON.stringify(r.writes, null, 1));
+      return `${r.writes.length} page note update(s) for ${r.url || 'the review page'}${a.out ? ` written to ${a.out}` : ''}:\n` + JSON.stringify(r.writes);
+    },
+  },
+
   hub_note_update: {
     description: 'Save a note\'s status and a short reply (the user sees it in VideoHub). After fixing: status "fixed" + reply.',
     schema: { project: z.string().optional(), id: z.number(), status: z.enum(['claude', 'fixed', 'open', ...NOTE_STATUS_ALIASES]).optional(), reply: z.string().optional() },
